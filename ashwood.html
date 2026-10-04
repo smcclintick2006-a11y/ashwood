@@ -298,6 +298,7 @@ var AshwoodGame = (() => {
     let bolt = 0;
     let stormCd = 9;
     let lavaCd = 0;
+    let hurtLock = 0;
     let bossHeal = 60;
     const nodes = [];
     const ponds = [];
@@ -768,6 +769,27 @@ var AshwoodGame = (() => {
         if (inLake(p.x, p.y)) continue;
         chests.push({ x: p.x, y: p.y, open: false });
       }
+      const sx = player.x;
+      const sy = player.y;
+      for (const n of nodes) {
+        const d = Math.hypot(n.x - sx, n.y - sy);
+        if (d < 160) {
+          const a = Math.atan2(n.y - sy, n.x - sx) || 0.4;
+          n.x = sx + Math.cos(a) * 180;
+          n.y = sy + Math.sin(a) * 180;
+        }
+      }
+      for (const m of mobs) {
+        if (m.kind === "kraken" || m.kind === "dragon" || m.kind === "lavadragon" || m.kind === "vulture") continue;
+        const d = Math.hypot(m.x - sx, m.y - sy);
+        if (d < 260) {
+          const a = Math.atan2(m.y - sy, m.x - sx) || 1;
+          m.x = sx + Math.cos(a) * 340;
+          m.y = sy + Math.sin(a) * 340;
+          m.homeX = m.x;
+          m.homeY = m.y;
+        }
+      }
     }
     function spawnMob(kind, x, y) {
       const hp = kind === "lavadragon" ? 2e4 : kind === "dragon" ? 460 : kind === "kraken" ? 400 : kind === "vulture" ? 300 : kind === "croc" ? 52 : kind === "bear" ? 90 : kind === "hyena" ? 40 : kind === "worm" ? 64 : kind === "frost" ? 46 : kind === "chick" ? 26 : kind === "piranha" ? 14 : kind === "bunny" ? 8 : 34;
@@ -888,6 +910,7 @@ var AshwoodGame = (() => {
       xp = 0;
       level = 1;
       lavaCd = 0;
+      hurtLock = 0;
       bossHeal = 60;
       bolt = 0;
       t = 22;
@@ -938,7 +961,10 @@ var AshwoodGame = (() => {
       n.dead = n.kind === "mythric" || n.kind === "radiate" || n.kind === "amethyst" || n.kind === "diamond" ? 30 : 12;
       n.hp = n.max;
     }
-    function hurt(amount) {
+    function hurt(amount, lock = true) {
+      if (mode !== "play" || amount <= 0) return;
+      if (lock && hurtLock > 0) return;
+      if (lock) hurtLock = 0.42;
       const helm = inv.helm || 0;
       const cut = 1 - Math.min(0.55, helm * 0.08);
       player.hp -= amount * cut;
@@ -974,6 +1000,7 @@ var AshwoodGame = (() => {
       unlock();
       if (slots[selected]?.id === "bow") {
         if (countOf("arrow") <= 0) {
+          hitCd = 0.55;
           say("No arrows");
           return;
         }
@@ -1000,7 +1027,6 @@ var AshwoodGame = (() => {
       const ang = player.ang;
       const hx = player.x + Math.cos(ang) * tw.reach * 0.72;
       const hy = player.y + Math.sin(ang) * tw.reach * 0.72;
-      let hit = false;
       let bestD = tw.reach + 8;
       let node = null;
       for (const n of nodes) {
@@ -1012,14 +1038,85 @@ var AshwoodGame = (() => {
           node = n;
         }
       }
-      if (node) {
+      let mob = null;
+      let mobD = tw.reach + 8;
+      for (const m of mobs) {
+        const reach = m.kind === "lavadragon" ? 130 : m.kind === "dragon" || m.kind === "kraken" || m.kind === "vulture" ? 78 : m.kind === "worm" ? 56 : m.kind === "bear" ? 36 : 28;
+        const d = Math.hypot(m.x - hx, m.y - hy);
+        if (d < reach && d < mobD) {
+          mobD = d;
+          mob = m;
+        }
+      }
+      if (mob && (!node || mobD <= bestD)) {
+        const m = mob;
+        const crit = Math.random() < 0.18;
+        const dmg = Math.round((crit ? tw.dmg * 2 : tw.dmg) * power);
+        m.hp -= dmg;
+        m.flash = 0.12;
+        if (m.kind === "worm") m.show = 2.4;
+        const knock = m.kind === "lavadragon" ? 2 : m.kind === "dragon" ? 4 : 14;
+        m.x += Math.cos(ang) * knock;
+        m.y += Math.sin(ang) * knock;
+        pop(m.x, m.y - 18, crit ? `crit ${dmg}` : `-${dmg}`, crit ? "#ffe08a" : "#ffb4b0");
+        burst(m.x, m.y, crit ? "#ffe08a" : "#c44", crit ? 12 : 7, 70);
+        trauma = Math.min(1, trauma + (crit ? 0.4 : 0.22));
+        hitstop = m.kind === "dragon" ? 0.02 : 0.045;
+        tone(160, 0.07, "sawtooth", 0.035);
+        if (m.hp <= 0) {
+          if (m.kind === "lavadragon") {
+            pop(m.x, m.y - 40, "LAVA DRAGON DOWN", "#ffd36a");
+          } else if (m.kind === "dragon") {
+            score += 250;
+            grantXp(80);
+            give("meat", 4);
+            pop(m.x, m.y - 28, "dragon down", "#ffe08a");
+            if (m.homeX < OCEAN_X) say("The cave is open");
+            tone(90, 0.4, "triangle", 0.06);
+          } else if (m.kind === "kraken") {
+            score += 220;
+            grantXp(70);
+            give("meat", 4);
+            pop(m.x, m.y - 28, "kraken down", "#c084fc");
+            say("The lake is quiet");
+          } else if (m.kind === "bear") {
+            score += 80;
+            give("meat", 3);
+            pop(m.x, m.y, "+3 meat", "#f0d0c0");
+          } else if (m.kind === "frost") {
+            score += 60;
+            give("meat", 2);
+            pop(m.x, m.y, "+2 meat", "#d7f4ff");
+          } else if (m.kind === "vulture") {
+            score += 200;
+            grantXp(60);
+            give("meat", 4);
+            pop(m.x, m.y - 28, "vulture down", "#ffb089");
+            say("The nest is quiet");
+          } else if (m.kind === "worm") {
+            score += 45;
+            give("meat", 2);
+            pop(m.x, m.y, "+2 meat", "#e6c98a");
+          } else if (m.kind === "bunny") {
+            score += 12;
+            give("meat", 1);
+            pop(m.x, m.y, "+meat", "#f0d0c0");
+          } else {
+            score += 40;
+            give("meat", 1);
+            pop(m.x, m.y, "+meat", "#f0d0c0");
+          }
+          burst(m.x, m.y, "#888", 12, 100);
+          grantXp(m.kind === "bear" ? 24 : m.kind === "bunny" ? 4 : 12);
+        }
+      } else if (node) {
         const need = ORE_NEED[node.kind];
         const axeTier = tw.id === "axe" ? tw.tier : 0;
         let chop = tw.chop;
         if (need !== void 0 && axeTier < need) {
           if (need <= 1) chop = 1;
           else {
-            const names = ["", "", "a stone axe", "an iron axe", "a gold axe", "a diamond axe", "an amethyst axe", "a radiate axe"];
+            const names = ["", "", "a stone axe", "an iron axe", "a gold axe", "a diamond axe", "an amethyst axe", "a radiate axe", "a mythric axe"];
             say(`Need ${names[need] || "a better axe"}`);
             chop = 0;
           }
@@ -1032,77 +1129,7 @@ var AshwoodGame = (() => {
           tone(node.kind === "tree" ? 220 : 140, 0.05, "square", 0.03);
           if (node.hp <= 0) harvest(node);
         }
-        hit = true;
-      }
-      if (!hit) {
-        for (const m of mobs) {
-          const reach = m.kind === "lavadragon" ? 130 : m.kind === "dragon" || m.kind === "kraken" || m.kind === "vulture" ? 78 : m.kind === "worm" ? 56 : m.kind === "bear" ? 36 : 28;
-          if (Math.hypot(m.x - hx, m.y - hy) < reach) {
-            const crit = Math.random() < 0.18;
-            const dmg = Math.round((crit ? tw.dmg * 2 : tw.dmg) * power);
-            m.hp -= dmg;
-            m.flash = 0.12;
-            if (m.kind === "worm") m.show = 2.4;
-            const knock = m.kind === "lavadragon" ? 2 : m.kind === "dragon" ? 4 : 14;
-            m.x += Math.cos(ang) * knock;
-            m.y += Math.sin(ang) * knock;
-            pop(m.x, m.y - 18, crit ? `crit ${dmg}` : `-${dmg}`, crit ? "#ffe08a" : "#ffb4b0");
-            burst(m.x, m.y, crit ? "#ffe08a" : "#c44", crit ? 12 : 7, 70);
-            trauma = Math.min(1, trauma + (crit ? 0.4 : 0.22));
-            hitstop = m.kind === "dragon" ? 0.02 : 0.045;
-            tone(160, 0.07, "sawtooth", 0.035);
-            if (m.hp <= 0) {
-              if (m.kind === "lavadragon") {
-                pop(m.x, m.y - 40, "LAVA DRAGON DOWN", "#ffd36a");
-              } else if (m.kind === "dragon") {
-                score += 250;
-                grantXp(80);
-                give("meat", 4);
-                pop(m.x, m.y - 28, "dragon down", "#ffe08a");
-                if (m.homeX < OCEAN_X) say("The cave is open");
-                tone(90, 0.4, "triangle", 0.06);
-              } else if (m.kind === "kraken") {
-                score += 220;
-                grantXp(70);
-                give("meat", 4);
-                pop(m.x, m.y - 28, "kraken down", "#c084fc");
-                say("The lake is quiet");
-              } else if (m.kind === "bear") {
-                score += 80;
-                give("meat", 3);
-                pop(m.x, m.y, "+3 meat", "#f0d0c0");
-              } else if (m.kind === "frost") {
-                score += 60;
-                give("meat", 2);
-                pop(m.x, m.y, "+2 meat", "#d7f4ff");
-              } else if (m.kind === "vulture") {
-                score += 200;
-                grantXp(60);
-                give("meat", 4);
-                pop(m.x, m.y - 28, "vulture down", "#ffb089");
-                say("The nest is quiet");
-              } else if (m.kind === "worm") {
-                score += 45;
-                give("meat", 2);
-                pop(m.x, m.y, "+2 meat", "#e6c98a");
-              } else if (m.kind === "bunny") {
-                score += 12;
-                give("meat", 1);
-                pop(m.x, m.y, "+meat", "#f0d0c0");
-              } else {
-                score += 40;
-                give("meat", 1);
-                pop(m.x, m.y, "+meat", "#f0d0c0");
-              }
-              burst(m.x, m.y, "#888", 12, 100);
-              grantXp(m.kind === "bear" ? 24 : m.kind === "bunny" ? 4 : 12);
-            }
-            hit = true;
-            break;
-          }
-        }
-      }
-      if (!hit) {
+      } else {
         for (const c of chests) {
           if (c.open) continue;
           if (Math.hypot(c.x - hx, c.y - hy) < 30) {
@@ -1287,6 +1314,7 @@ var AshwoodGame = (() => {
       }
       if (play && pointerDown) attack();
       hitCd = Math.max(0, hitCd - dt);
+      hurtLock = Math.max(0, hurtLock - dt);
       player.swing = Math.max(0, player.swing - dt);
       if (play) {
         player.hunger = clamp(player.hunger - HUNGER_PER_SEC * dt, 0, 100);
@@ -1313,7 +1341,7 @@ var AshwoodGame = (() => {
             lavaCd = 0.4;
             const raw = inLavaPit(player.x, player.y) ? 16 : 9;
             const hit = inv.mask > 0 ? Math.max(1, Math.round(raw * 0.15)) : raw;
-            hurt(hit);
+            hurt(hit, false);
             pop(player.x, player.y - 16, inv.mask > 0 ? "heat" : "lava", inv.mask > 0 ? "#f4f1ea" : "#ff6a22");
           }
         } else lavaCd = 0;
@@ -1346,9 +1374,12 @@ var AshwoodGame = (() => {
         if (n.dead > 0) {
           n.dead -= dt;
           if (n.dead <= 0) {
-            const p = spot(n.biome);
-            n.x = p.x;
-            n.y = p.y;
+            const pinned = n.kind === "amethyst" || n.kind === "radiate" || n.kind === "mythric";
+            if (!pinned) {
+              const p = spot(n.biome);
+              n.x = p.x;
+              n.y = p.y;
+            }
             n.hp = n.max;
           }
         }
@@ -1410,7 +1441,12 @@ var AshwoodGame = (() => {
           continue;
         }
         if (m.kind === "piranha" || m.kind === "croc") {
-          const pond = ponds.find((p) => Math.hypot(p.x - m.homeX, p.y - m.homeY) < (m.kind === "croc" ? 80 : 40));
+          const pond = ponds.find((p) => Math.hypot(p.x - m.homeX, p.y - m.homeY) < 180);
+          if (!pond) {
+            m.x += (m.homeX - m.x) * 0.2;
+            m.y += (m.homeY - m.y) * 0.2;
+            continue;
+          }
           const inside = !!pond && ((player.x - pond.x) / pond.rx) ** 2 + ((player.y - pond.y) / pond.ry) ** 2 < 1;
           const swim = m.kind === "croc" ? 78 : 150;
           if (play && inside) {
@@ -1503,6 +1539,16 @@ var AshwoodGame = (() => {
         }
         m.x = clamp(m.x, 20, MAP_W - 20);
         m.y = clamp(m.y, 20, WORLD - 20);
+        if (m.kind === "kraken") {
+          const dx = (m.x - LAKE_X) / LAKE_RX;
+          const dy = (m.y - LAKE_Y) / LAKE_RY;
+          const e = dx * dx + dy * dy;
+          if (e > 0.72) {
+            const s = Math.sqrt(0.72 / e);
+            m.x = LAKE_X + (m.x - LAKE_X) * s;
+            m.y = LAKE_Y + (m.y - LAKE_Y) * s;
+          }
+        }
         if (m.kind === "hyena") {
           if (m.y < DESERT_Y + 40) m.y = DESERT_Y + 40;
           if (m.x > OCEAN_X - 30) m.x = OCEAN_X - 30;
