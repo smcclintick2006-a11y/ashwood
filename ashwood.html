@@ -2650,10 +2650,10 @@ var AshwoodGame = (() => {
 const TIER = ["", "Wd", "St", "Ir", "Gd", "Di", "Am", "Ra", "My"];
 const NAME = { stew:"Stew", bench:"Bench", bow:"Bow", arrow:"Arrow", helm:"Helm", spike:"Spike", bed:"Bed", spear:"Spear", axe:"Axe", wall:"Wall", fire:"Fire", coat:"Coat", mask:"Mask", sword:"Sword", bandage:"Wrap" };
 const canvas = document.getElementById("c");
+let craftOn = false, bookOn = false, last = null;
 const api = AshwoodGame.mountGame(canvas, drawHud);
 document.getElementById("got").onclick = () => document.getElementById("hint").style.display = "none";
 document.getElementById("again").onclick = () => api.start();
-let craftOn = false, bookOn = false, last = null;
 document.getElementById("craftBtn").onclick = () => { craftOn = !craftOn; bookOn = false; paintPanels(); };
 document.getElementById("bookBtn").onclick = () => { bookOn = !bookOn; craftOn = false; paintPanels(); };
 function groupOf(id) {
