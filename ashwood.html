@@ -34,7 +34,12 @@
 </head>
 <body>
 <div id="app">
-  <canvas id="c"></canvas>
+  <div id="blocked" style="position:absolute;z-index:9;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;background:#10281c;color:#fff;text-align:center">
+    <div>
+      <h1 style="margin:0 0 8px">Save the file first</h1>
+      <p>This link will not run the game. Right-click, choose Save link as, name it ashwood.html, then open that file.</p>
+    </div>
+  </div>
   <div class="top" id="clock">Day 1</div>
   <div class="xp"><div id="xp"></div></div>
   <div class="actions">
@@ -2647,6 +2652,7 @@ var AshwoodGame = (() => {
 })();
 </script>
 <script>
+document.getElementById("blocked").style.display = "none";
 const TIER = ["", "Wd", "St", "Ir", "Gd", "Di", "Am", "Ra", "My"];
 const NAME = { stew:"Stew", bench:"Bench", bow:"Bow", arrow:"Arrow", helm:"Helm", spike:"Spike", bed:"Bed", spear:"Spear", axe:"Axe", wall:"Wall", fire:"Fire", coat:"Coat", mask:"Mask", sword:"Sword", bandage:"Wrap" };
 const canvas = document.getElementById("c");
